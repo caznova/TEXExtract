@@ -88,10 +88,18 @@ namespace TEXView
             return _ret;
         }
 
-        public bool ReadFromStream(Stream _D2MStreamSource)
+        public bool ReadFromStream(Stream _D2MStreamSource, bool writeToFile = false, string filePath = "")
         {
             _DTXReader = new DTXReader(this);
-            bool _ret = _DTXReader.Open(_D2MStreamSource);
+            bool _ret = _DTXReader.Open(_D2MStreamSource, writeToFile, filePath);
+            _D2MStreamSource.Dispose();
+            return _ret;
+        }
+
+        public Stream ReadFromStreamAndDecompress(Stream _D2MStreamSource)
+        {
+            _DTXReader = new DTXReader(this);
+            Stream _ret = _DTXReader.Decompress(_D2MStreamSource);
             _D2MStreamSource.Dispose();
             return _ret;
         }

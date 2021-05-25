@@ -156,7 +156,7 @@ namespace TEXView
             }
 
             for (int imgidx = 0; imgidx < DTXFile.Header.ImgCount; ++imgidx)
-            {
+                              {
                 ImgInfo _i = DTXFile.ImgLists[imgidx];
 
                 if(_i.Info.Width == 0 || _i.Info.Height == 0 )
@@ -173,11 +173,30 @@ namespace TEXView
                 }
                 else
                 {
-                    Byte[] ImgD = Enumerable.Repeat((byte)DTXFile.FuchsiaIdx, _i.Info.Width * _i.Info.Height * DTXFile.Header.ImgType).ToArray();
+                    Byte[] ImgD;
+                    if (DTXFile.Header.ImgType == 1 && DTXFile.Header.Version != 8 && DTXFile.Header.Version != 7)
+                    {
+                        ImgD = Enumerable.Repeat((byte)DTXFile.FuchsiaIdx, _i.Info.Width * _i.Info.Height * (DTXFile.Header.ImgType * 2)).ToArray();
+                    }
+                    else
+                    {
+                        ImgD = Enumerable.Repeat((byte)DTXFile.FuchsiaIdx, _i.Info.Width * _i.Info.Height * DTXFile.Header.ImgType).ToArray();
+                    }
                     System.Drawing.Bitmap ImgP = new System.Drawing.Bitmap(_i.Info.Width, _i.Info.Height, PixelFormat.Format24bppRgb);
                     for (int ChkIdx = 0; ChkIdx < _i.Info.ChunkCount; ++ChkIdx)
                     {
-                        if (DTXFile.Header.ImgType != 3)
+                        if (DTXFile.Header.ImgType == 1)
+                        {
+                            ChunkInfo nChk = (ChunkInfo)_i.ChunkList[ChkIdx];
+                            int _Row = nChk.Row;
+                            int _Pos = nChk.Pos;
+
+                            Byte[] Raw = new Byte[nChk.ChunkSize * 2];
+                            ReadBytes(ms, (uint)nChk.ChunkSize * 2, ref Raw);
+                            Raw.CopyTo(ImgD, (_Row * 2) * _i.Info.Width + (_Pos * 2));
+                        }
+                        
+                        else if (DTXFile.Header.ImgType != 3)
                         {
                             ChunkInfo nChk = (ChunkInfo)_i.ChunkList[ChkIdx];
                             int _Row = nChk.Row;
@@ -208,7 +227,23 @@ namespace TEXView
                         }
                     }
 
-                    if (DTXFile.Header.ImgType != 3)
+                    if (DTXFile.Header.ImgType == 1)
+                    {
+                        Bitmap _bp = null;
+                        if (DTXFile.Palette != null)
+                        {
+                            _bp = BitmapExtensions.BitmapSourceFromArrayIndex(ImgD, _i.Info.Width, _i.Info.Height, DTXFile.Header.ImgType * 16, DTXFile.Palette);
+                        }
+                        else
+                        {
+                            _bp = BitmapExtensions.BitmapSourceFromArray(ImgD, _i.Info.Width, _i.Info.Height, DTXFile.Header.ImgType * 16);
+                        }
+
+                        Bitmap bm = new Bitmap(_bp);
+                        _i.Img = bm;
+                        _bp.Dispose();
+                    }
+                    else if (DTXFile.Header.ImgType != 3)
                     {
                         Bitmap _bp = null;
                         if (DTXFile.Palette != null)
@@ -222,6 +257,7 @@ namespace TEXView
 
                         Bitmap bm = new Bitmap(_bp);
                         _i.Img = bm;
+                        _bp.Dispose();
                     }
                     else
                     {
@@ -231,11 +267,11 @@ namespace TEXView
 
                 DTXFile.ImgLists[imgidx] = _i;
             }
-
+            ms.Dispose();
             return true;
         }
 
-        public bool Open(Stream _stream)
+        public bool Open(Stream _stream, bool writeToFile = false, string filePath = "")
         {
             DTXFile.Header = new DTXHeader();
             DTXFile.ImgLists = new List<ImgInfo>();
@@ -246,7 +282,19 @@ namespace TEXView
             Int16 Hzip = _br.ReadInt16();
             MemoryStream _decompress;
             DecompressData(_stream, out _decompress);
+            
             _stream = _decompress;
+
+            if (writeToFile)
+            {
+                Stream dtxWriter = new FileStream(filePath, FileMode.Create,
+                                                             FileAccess.Write, FileShare.Write);
+                //dtxWriter.Write(_stream., 0, _stream.Length);
+                _stream.CopyTo(dtxWriter);
+                _stream.Position = 0;
+                dtxWriter.Flush();
+                dtxWriter.Dispose();
+            }
 
             Read<DTXHeader>(_stream, ref DTXFile.Header);
 
@@ -283,7 +331,7 @@ namespace TEXView
                         }
                     }
                     DTXFile.Palette = new BitmapPalette(colors);
-                    //bm2.Save("E:\\p" + string.Format("\\{0}.bmp", DTXFile.Header.ImgType), ImageFormat.Bmp);
+                    //bm2.Save("E:\\TalesWeaver Tools\\jtw dump" + string.Format("\\{0}.bmp", DateTimeOffset.Now.ToUnixTimeMilliseconds()), ImageFormat.Bmp);
                 }
 
                 if (DTXFile.Header.ImgType ==0)
@@ -318,7 +366,7 @@ namespace TEXView
                     //!--This type all image as big image.
                     DTXFile.Header.ImgCount = 1;
                 }
-                else if (DTXFile.Header.ImgType == 3 )
+                else if (DTXFile.Header.ImgType == 3)
                 {
                     for (int imgidx = 0; imgidx < DTXFile.Header.ImgCount; ++imgidx)
                     {
@@ -390,6 +438,21 @@ namespace TEXView
             }
            
             return true;
+        }
+
+        public Stream Decompress(Stream _stream) {
+
+            DTXFile.Header = new DTXHeader();
+            DTXFile.ImgLists = new List<ImgInfo>();
+            DTXFile.ImageDefineLists = new List<Object>();
+
+            BinaryReader _br = new BinaryReader(_stream);
+            //UInt32 _ZipSize = _br.ReadUInt32(); //!--Test
+            Int16 Hzip = _br.ReadInt16();
+            MemoryStream _decompress;
+            DecompressData(_stream, out _decompress);
+
+            return _decompress;
         }
     }
 }
